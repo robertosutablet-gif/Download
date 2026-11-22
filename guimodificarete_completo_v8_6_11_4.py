@@ -799,6 +799,19 @@ def compute_node_positions(net):
 def make_topology_figure(net, sol):
     pos = compute_node_positions(net)
     q_map = {r["id"]: r["Q_from_to_W"] for r in sol.branch_results}
+
+    q_in_map = {nid: 0.0 for nid in net.nodes}
+    q_out_map = {nid: 0.0 for nid in net.nodes}
+    for b in net.branches:
+        qv = float(q_map.get(b.id, 0.0))
+        if not np.isfinite(qv):
+            continue
+        if qv >= 0.0:
+            q_in_map[b.to_node] = q_in_map.get(b.to_node, 0.0) + qv
+            q_out_map[b.from_node] = q_out_map.get(b.from_node, 0.0) + qv
+        else:
+            q_in_map[b.from_node] = q_in_map.get(b.from_node, 0.0) - qv
+            q_out_map[b.to_node] = q_out_map.get(b.to_node, 0.0) - qv
     grouped = defaultdict(list)
     for b in net.branches:
         pair = tuple(sorted([b.from_node, b.to_node]))
@@ -879,8 +892,9 @@ def make_topology_figure(net, sol):
 
     for nid, (x, y) in pos.items():
         t_val = sol.temperatures_K.get(nid, 0.0)
-        q_sum = sum(ld.power_W for ld in net.loads if ld.enabled and ld.node == nid)
-        q_txt = f" | Q={q_sum:.2f}W" if q_sum > 0 else ""
+        q_load = sum(ld.power_W for ld in net.loads if ld.enabled and ld.node == nid)
+        q_through = max(q_in_map.get(nid, 0.0), q_out_map.get(nid, 0.0))
+        q_sum = 0.0 if nid == "ambient" else q_load + q_through
         fc = "#fef3c7" if nid in ("stage1", "stage2") else ("#e2e8f0" if nid == "ambient" else "#eff6ff")
         ec = "#b45309" if nid in ("stage1", "stage2") else ("#475569" if nid == "ambient" else "#1e3a8a")
         ax.add_patch(FancyBboxPatch((x - box_w / 2, y - box_h / 2), box_w, box_h, boxstyle="round,pad=0.008,rounding_size=0.012", fc=fc, ec=ec, lw=1.8, zorder=4))
